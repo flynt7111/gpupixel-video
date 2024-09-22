@@ -29,6 +29,9 @@ class GPUPIXEL_API SourceImage : public Source {
                                             int channel_count,
                                             const unsigned char* pixels);
   void Render();
+  
+  // New method to get the pixels
+  unsigned char* getPixels() const ;
  private:
 #if defined(GPUPIXEL_ANDROID)
     static std::shared_ptr<SourceImage> createImageForAndroid(std::string name);

@@ -70,17 +70,24 @@ ENDIF()
 FILE(GLOB INI_SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/inih/ini.c")
 list(APPEND SOURCE_FILES ${INI_SOURCE_FILE})
 
+# Find OpenCV package
+find_package(OpenCV REQUIRED)
+
 # build type: executable
 # ------
 ADD_EXECUTABLE(${PROJECT_NAME} ${SOURCE_FILES})
- 
+
+# Include OpenCV directories
+include_directories(${OpenCV_INCLUDE_DIRS})
+
 # link libs
 # -------
 IF(${CURRENT_OS} STREQUAL "linux")
 	TARGET_LINK_LIBRARIES(${PROJECT_NAME} 
 						gpupixel
 						GL
-						glfw)
+						glfw
+                        ${OpenCV_LIBS})
 	SET(GPUPIXEL_LIBS ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libgpupixel.so)	
 	FIlE(GLOB VNN_LIBS 
 		${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/vnn/libs/${CURRENT_OS}/*

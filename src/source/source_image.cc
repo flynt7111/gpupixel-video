@@ -89,3 +89,16 @@ void SourceImage::Render() {
   Source::proceed();
 }
 
+unsigned char* SourceImage::getPixels() const {
+    // Determine the size of the pixels buffer
+    size_t size = image_bytes.size();
+
+    // Allocate memory for the new buffer
+    unsigned char* cloned_pixels = new unsigned char[size];
+
+    // Copy data from the original pixels buffer to the new buffer
+    std::memcpy(cloned_pixels, image_bytes.data(), size);
+
+    // Return the cloned buffer
+    return cloned_pixels;
+}

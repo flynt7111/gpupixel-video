@@ -27,6 +27,44 @@ Reboot .bashrc
 source ~/.bashrc
 ```
 
+## Install OpenCV for video processing
+```
+sudo apt-get update
+sudo apt-get install libopencv-dev
+```
+
+## Install Glad - For VSCode IDE
+```
+git clone https://github.com/Dav1dde/glad.git
+cd glad
+python3 -m glad --out-path=build --api="gl:core=4.6" c
+sudo mv build/include/glad /usr/local/include/glad
+```
+Update c_cpp_properties.json
+```
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include",
+                "/usr/local/include",
+                "/usr/include/opencv4/opencv2",
+                "/usr/local/include/glad", // Updated path to where you have GLAD headers
+                "/usr/include/GLFW"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
+```
+
 # Build command in Linux (Ubuntu)
 ```
 rm -rf build
@@ -50,4 +88,3 @@ chmod +x run-app.sh #Make the Script Executable
 ./run-app.sh
 ```
 
-# Dev Environment Setup

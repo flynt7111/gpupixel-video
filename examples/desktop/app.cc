@@ -1,12 +1,13 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <opencv2/opencv.hpp>
+#include <cstdlib> // For exit()
 
 #include <iostream>
 #include <memory>
 #include <ini.h>
 #include "gpupixel.h"
 using namespace gpupixel;
-
 
 std::shared_ptr<BeautyFaceFilter> beauty_face_filter_;
 std::shared_ptr<FaceReshapeFilter> face_reshape_filter_;
@@ -16,6 +17,11 @@ std::shared_ptr<SourceImage> gpuSourceImage;
 std::shared_ptr<TargetRawDataOutput> output_;
 std::shared_ptr<TargetView> target_view;
 
+std::string inputFilePath = "demo.png";
+std::string inputFileType = "image";
+std::string outputFilePath = "demo-output.mp4";
+std::string configFilePath = "appConfig.ini";
+
 float beautyValue = 0;
 float whithValue = 0;
 float thinFaceValue = 0;
@@ -23,6 +29,7 @@ float bigeyeValue = 0;
 float lipstickValue = 0;
 float blusherValue = 0;
 
+// Headers declaration
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
 void adjustBeautyBlur(float increment = 0.0);
@@ -32,12 +39,14 @@ void adjustEyeZoom(float increment = 0.0);
 void adjustLipstickBlend(float increment = 0.0);
 void adjustBlusherBlend(float increment = 0.0);
 
- void error_callback( int error, const char *msg ) {
+// Error callback
+void error_callback( int error, const char *msg ) {
     std::string s;
     s = " [" + std::to_string(error) + "] " + msg + '\n';
     std::cerr << s << std::endl;
 }
 
+// Ini file handler
 int iniHandler(void* user, const char* section, const char* name, const char* value) {
     if (std::string(section) == "Settings") {
         if (std::string(name) == "beautyValue") beautyValue = std::stof(value);
@@ -50,76 +59,41 @@ int iniHandler(void* user, const char* section, const char* name, const char* va
     return 1;
 }
 
+// Load configuration values from the ini file
 void loadConfig(const std::string& configFilePath) {
+    std::cout << "Loading config file: " << configFilePath << std::endl;
     if (ini_parse(configFilePath.c_str(), iniHandler, NULL) < 0) {
         std::cerr << "Failed to load config file: " << configFilePath << std::endl;
         exit(EXIT_FAILURE);
     }
+    std::cout << "Config file loaded successfully." << std::endl;
 }
 
-int main(int argc, char** argv) {
-    std::string imageFilePath;
-    std::string configFilePath = "appConfig.ini"; // Default config file path
-
-    if (argc < 2) {
-        std::cerr << "No image file provided. Using default: demo.png" << std::endl;
-        imageFilePath = "demo.png";
-    } else {
-        imageFilePath = argv[1];
-        if (argc >= 3) {
-            configFilePath = argv[2]; // Optional config file path
-        }
+// Setup input parameters
+void setupInputParams(int argc, char** argv) {
+    // Parse command-line arguments
+    if (argc >= 2) {
+        inputFilePath = argv[1];
+    }
+    if (argc >= 3) {
+        inputFileType = argv[2];
     }
 
-    loadConfig(configFilePath); // Load configuration values
+    std::cout << "Input File Path: " << inputFilePath << std::endl;
+    std::cout << "Input File Type: " << inputFileType << std::endl;
+    std::cout << "Output File Path: " << outputFilePath << std::endl;
 
-    glfwInit();
-     GLFWwindow* window = GPUPixelContext::getInstance()->GetGLContext();
-  
-    if (window == NULL)
-    {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return -1;
-    }
+    // Load configuration values
+    loadConfig(configFilePath); 
+}
 
-    gladLoadGL();
-    glfwMakeContextCurrent(window);
-
-    glfwShowWindow(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    
+// Setup filters
+void setupFilters() {
     // create filter
-    // ----
     lipstick_filter_ = LipstickFilter::create();
     blusher_filter_ = BlusherFilter::create();
     face_reshape_filter_ = FaceReshapeFilter::create();
-    
-    //  filter pipline
-    // ----
-    gpuSourceImage = SourceImage::create(imageFilePath);
-    target_view = std::make_shared<TargetView>();
-
-    gpuSourceImage->RegLandmarkCallback([=](std::vector<float> landmarks) {
-       lipstick_filter_->SetFaceLandmarks(landmarks);
-       blusher_filter_->SetFaceLandmarks(landmarks);
-       face_reshape_filter_->SetFaceLandmarks(landmarks);
-     });
-
     beauty_face_filter_ = BeautyFaceFilter::create();
- 
-    
-    // gpuSourceImage->addTarget(beauty_face_filter_)
-    //               ->addTarget(target_view); 
-   
-    gpuSourceImage->addTarget(lipstick_filter_)
-                    ->addTarget(blusher_filter_)
-                    ->addTarget(face_reshape_filter_)
-                    ->addTarget(beauty_face_filter_)
-                    ->addTarget(target_view);
-                    
-    // 
-    target_view->onSizeChanged(1280, 720);
 
     // Apply the configuration values
     adjustBeautyBlur();
@@ -128,6 +102,114 @@ int main(int argc, char** argv) {
     adjustEyeZoom();
     adjustLipstickBlend();
     adjustBlusherBlend();
+}
+
+// Render source image with filters
+void setupSourceImageWithFilters(std::shared_ptr<SourceImage> gpuSourceImage) {
+    gpuSourceImage->RegLandmarkCallback([=](std::vector<float> landmarks) {
+        lipstick_filter_->SetFaceLandmarks(landmarks);
+        blusher_filter_->SetFaceLandmarks(landmarks);
+        face_reshape_filter_->SetFaceLandmarks(landmarks);
+    });
+
+    gpuSourceImage->addTarget(lipstick_filter_)
+                    ->addTarget(blusher_filter_)
+                    ->addTarget(face_reshape_filter_)
+                    ->addTarget(beauty_face_filter_)
+                    ->addTarget(target_view);
+    
+}
+
+// Perform video filters
+void performVideoFilters() {
+
+    // Initialize OpenCV video capture
+    cv::VideoCapture cap(inputFilePath);
+    if (!cap.isOpened()) {
+        std::cerr << "Error opening video file: " << inputFilePath << std::endl;
+        return;
+    }
+
+    // Get video properties
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    cv::Size frameSize(cap.get(cv::CAP_PROP_FRAME_WIDTH), cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    int totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+
+    // Initialize OpenCV video writer
+    cv::VideoWriter writer;
+    int codec = cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
+    writer.open("output.avi", codec, fps, frameSize, true);
+
+    if (!writer.isOpened()) {
+        std::cerr << "Could not open the output video file for write" << std::endl;
+        return;
+    }
+
+    cv::Mat frame;
+    int currentFrame = 0;
+    while (cap.read(frame)) {
+        currentFrame++;
+
+        // Print progress
+        std::cout << "Processing frame " << currentFrame << " / " << totalFrames << " (" 
+                  << (currentFrame * 100 / totalFrames) << "%)" << std::endl;
+
+        // Convert cv::Mat to the format required by your filters
+        int width = frame.cols;
+        int height = frame.rows;
+        int channel_count = frame.channels();
+        const unsigned char* pixels = frame.data;
+
+        gpuSourceImage = SourceImage::create_from_memory(width, height, channel_count, pixels);
+        target_view = std::make_shared<TargetView>();
+
+        setupSourceImageWithFilters(gpuSourceImage);
+
+        target_view->onSizeChanged(frame.cols, frame.rows);
+
+        // Render the frame
+        gpuSourceImage->Render();
+
+        // Convert the processed frame back to cv::Mat
+        cv::Mat processedFrame(height, width, CV_8UC(channel_count), gpuSourceImage->getPixels());
+
+        // Write the processed frame to the output video
+        writer.write(processedFrame);
+    }
+
+    // Release OpenCV resources
+    cap.release();
+    writer.release();
+}
+
+// Perform image filters
+void performImageFilters() {
+    
+    glfwInit();
+    GLFWwindow* window = GPUPixelContext::getInstance()->GetGLContext();
+  
+    if (window == NULL)
+    {
+        std::cout << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return;
+    }
+
+    gladLoadGL();
+    glfwMakeContextCurrent(window);
+
+    glfwShowWindow(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+        
+    //  filter pipline
+    // ----
+    gpuSourceImage = SourceImage::create(inputFilePath);
+    target_view = std::make_shared<TargetView>();
+
+    setupSourceImageWithFilters(gpuSourceImage);
+                    
+    // set target view size
+    target_view->onSizeChanged(1280, 720);
     
     // render loop
     // -----------
@@ -146,11 +228,30 @@ int main(int argc, char** argv) {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
     
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
+}
+
+// ======================= Main function =========================
+int main(int argc, char** argv) {
+    // Setup input parameters
+    setupInputParams(argc, argv);
+    
+    // Apply the default configuration values
+    setupFilters();
+
+    // Check inputFileType
+    if (inputFileType == "video") {
+        performVideoFilters();
+    } else if (inputFileType == "image") {
+        performImageFilters();
+    } else {
+        std::cerr << "Invalid input file type: " << inputFileType << std::endl;
+        return -1;
+    }
+
     return 0;
 }
 
