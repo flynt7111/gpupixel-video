@@ -85,11 +85,21 @@ chmod +x build.sh #Make the Script Executable
 # Usage CLI
 ```
 cd output/app/linux
-./gpupixel_app <input_file> <config_file>
+./gpupixel_app <input_file> <output_file>
 ```
 OR run build script
 ```
 chmod +x run-app.sh #Make the Script Executable
-./run-app.sh
+./run-app.sh <input_file> <output_file>
 ```
+
+# App Interactions
+ESC - exit app
+A-Z - Adjust Beauty Blur
+X-S - Adjust Beauty White
+C-D - Adjust Face Slim
+V-F - Adjust Eye Zoom
+B-G - Adjust Lip Stick
+N-H - Adjust Cheek Brusher
+Q - Start Converting video
 

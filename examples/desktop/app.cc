@@ -31,9 +31,12 @@ float bigeyeValue = 0;
 float lipstickValue = 0;
 float blusherValue = 0;
 
+bool canStartConvertVideo = false;
+
 // Headers declaration
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void processInput(GLFWwindow *window);
+void processInput(int key, int action);
 void adjustBeautyBlur(float increment = 0.0);
 void adjustBeautyWhite(float increment = 0.0);
 void adjustFaceSlim(float increment = 0.0);
@@ -164,6 +167,9 @@ void initUIWindow() {
 
     glfwShowWindow(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
+    // Set the key callback
+    glfwSetKeyCallback(window, keyCallback);
 }
 
 // Function to detect video codec based on file extension
@@ -209,40 +215,61 @@ void performVideoFilters() {
     initUIWindow();
 
     cv::Mat frame;
+    cap.read(frame);    // Read the first frame
+    bool isNewFrame = true;
+    int width = 0;
+    int height = 0;
+    int channel_count = 0;
     int currentFrame = 0;
-    while (cap.read(frame) && !glfwWindowShouldClose(window)) {
-        currentFrame++;
+    while (!glfwWindowShouldClose(window)) {
 
-        // Print progress
-        std::cout << "\rProcessing frame " << currentFrame << " / " << totalFrames << " (" 
-          << (currentFrame * 100 / totalFrames) << "%)" << std::flush;
+        if (canStartConvertVideo == true) {
+            if (currentFrame > 0) {
+                if (cap.read(frame) == false) {
+                    // Stop while loop at the end of the video
+                    break;
+                }
+                isNewFrame = true;
+            }
+            currentFrame++;
 
-        // Convert cv::Mat to the format required by your filters
-        int width = frame.cols;
-        int height = frame.rows;
-        int channel_count = frame.channels();
-        // const unsigned char* pixels = frame.data;
+            // Print progress
+            std::cout << "\rProcessing frame " << currentFrame << " / " << totalFrames << " (" 
+            << (currentFrame * 100 / totalFrames) << "%)" << std::flush;
+        }
 
-        // If the result is still bluish, you might need to convert the color format
-        cv::Mat correctedFrame;
-        cv::cvtColor(frame, correctedFrame, cv::COLOR_BGR2RGB);
-        const unsigned char* pixels = correctedFrame.data;
+        if (isNewFrame == true) {
+            // Convert cv::Mat to the format required by your filters
+            width = frame.cols;
+            height = frame.rows;
+            channel_count = frame.channels();
+            // const unsigned char* pixels = frame.data;
 
-        // Convert Frame to SourceImage
-        gpuSourceImage = SourceImage::create_from_memory(width, height, channel_count, pixels);
-        setupSourceImageWithFilters();
+            // If the result is still bluish, you might need to convert the color format
+            cv::Mat correctedFrame;
+            cv::cvtColor(frame, correctedFrame, cv::COLOR_BGR2RGB);
+            const unsigned char* pixels = correctedFrame.data;
+
+            // Convert Frame to SourceImage
+            gpuSourceImage = SourceImage::create_from_memory(width, height, channel_count, pixels);
+            setupSourceImageWithFilters();
+
+            isNewFrame = false;
+        }
 
         // Render the frame
         gpuSourceImage->Render();
 
-        // Convert the processed frame back to cv::Mat'
-        // Note: the processed pixels is 4-channels RGBA format
-        cv::Mat processedFrame(height, width, CV_8UC(4), gpuSourceImage->getPixels());
-        cv::Mat rgbFrame;
-        cv::cvtColor(processedFrame, rgbFrame, cv::COLOR_RGBA2BGR);
+        if (canStartConvertVideo == true) {
+            // Convert the processed frame back to cv::Mat'
+            // Note: the processed pixels is 4-channels RGBA format
+            cv::Mat processedFrame(height, width, CV_8UC(4), gpuSourceImage->getPixels());
+            cv::Mat rgbFrame;
+            cv::cvtColor(processedFrame, rgbFrame, cv::COLOR_RGBA2BGR);
 
-        // Write the processed frame to the output video
-        writer.write(rgbFrame);
+            // Write the processed frame to the output video
+            writer.write(rgbFrame);
+        }
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -273,12 +300,7 @@ void performImageFilters() {
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        // input
-        // -----
-        processInput(window);
-        
-        // 
-        // -----
+        // Render filter
         gpuSourceImage->Render();
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -329,86 +351,65 @@ float adjustValue(float value, float increment, float max = 10.0, float min = 0.
 void adjustBeautyBlur(float increment) {
     beautyValue = adjustValue(beautyValue, increment);
     beauty_face_filter_->setBlurAlpha(beautyValue / 10);
+    std::cout << "adjustBeautyBlur() " << "value: " << beautyValue << std::endl;
 }
 
 void adjustBeautyWhite(float increment) {
     whithValue = adjustValue(whithValue, increment);
     beauty_face_filter_->setWhite(whithValue / 20);
+    std::cout << "adjustBeautyWhite() " << "value: " << whithValue << std::endl;
 }
 
 void adjustFaceSlim(float increment) {
     thinFaceValue = adjustValue(thinFaceValue, increment);
     face_reshape_filter_->setFaceSlimLevel(thinFaceValue / 200);
+    std::cout << "adjustFaceSlim() " << "value: " << thinFaceValue << std::endl;
 }
 
 void adjustEyeZoom(float increment) {
     bigeyeValue = adjustValue(bigeyeValue, increment);
     face_reshape_filter_->setEyeZoomLevel(bigeyeValue / 100);
+    std::cout << "adjustEyeZoom() " << "value: " << bigeyeValue << std::endl;
 }
 
 void adjustLipstickBlend(float increment) {
     lipstickValue = adjustValue(lipstickValue, increment);
     lipstick_filter_->setBlendLevel(lipstickValue / 10);
+    std::cout << "adjustLipstickBlend() " << "value: " << lipstickValue << std::endl;
 }
 
 void adjustBlusherBlend(float increment) {
     blusherValue = adjustValue(blusherValue, increment);
     blusher_filter_->setBlendLevel(blusherValue / 10);
+    std::cout << "adjustBlusherBlend() " << "value: " << blusherValue << std::endl;
+}
+
+// Key callback function
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    // Add other key actions here
+    processInput(key, action);
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
+void processInput(int key, int action)
 {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        adjustBeautyBlur(1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS) {
-        adjustBeautyBlur(-1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        adjustBeautyWhite(1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS) {
-        adjustBeautyWhite(-1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        adjustFaceSlim(1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
-        adjustFaceSlim(-1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
-        adjustEyeZoom(1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS) {
-        adjustEyeZoom(-1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
-        adjustLipstickBlend(1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
-        adjustLipstickBlend(-1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS) {
-        adjustBlusherBlend(1.0);
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS) {
-        adjustBlusherBlend(-1.0);
+    if (action == GLFW_PRESS) {
+        if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
+        if (key == GLFW_KEY_A) adjustBeautyBlur(1.0);
+        if (key == GLFW_KEY_Z) adjustBeautyBlur(-1.0);
+        if (key == GLFW_KEY_S) adjustBeautyWhite(1.0);
+        if (key == GLFW_KEY_X) adjustBeautyWhite(-1.0);
+        if (key == GLFW_KEY_D) adjustFaceSlim(1.0);
+        if (key == GLFW_KEY_C) adjustFaceSlim(-1.0);
+        if (key == GLFW_KEY_F) adjustEyeZoom(1.0);
+        if (key == GLFW_KEY_V) adjustEyeZoom(-1.0);
+        if (key == GLFW_KEY_G) adjustLipstickBlend(1.0);
+        if (key == GLFW_KEY_B) adjustLipstickBlend(-1.0);
+        if (key == GLFW_KEY_H) adjustBlusherBlend(1.0);
+        if (key == GLFW_KEY_N) adjustBlusherBlend(-1.0);
+        if (key == GLFW_KEY_Q) canStartConvertVideo = true;
     }
 }
 
