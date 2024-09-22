@@ -10,6 +10,7 @@ cd output/app/linux || exit
 
 # Override OpenGL driver
 export MESA_LOADER_DRIVER_OVERRIDE=nvidia
+#export MESA_LOADER_DRIVER_OVERRIDE=i965
 export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
 
 # Run the executable with the optional input file and config file

@@ -19,8 +19,10 @@ std::shared_ptr<TargetView> target_view;
 
 std::string inputFilePath = "demo.png";
 std::string inputFileType = "image";
-std::string outputFilePath = "demo-output.mp4";
+std::string outputFilePath = "demo-output.png";
 std::string configFilePath = "appConfig.ini";
+
+GLFWwindow* window;
 
 float beautyValue = 0;
 float whithValue = 0;
@@ -69,6 +71,20 @@ void loadConfig(const std::string& configFilePath) {
     std::cout << "Config file loaded successfully." << std::endl;
 }
 
+// Function to detect file type based on file extension
+void detectFileType(const std::string& filePath, std::string& fileType) {
+    std::string extension = filePath.substr(filePath.find_last_of(".") + 1);
+    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+    if (extension == "jpg" || extension == "jpeg" || extension == "png" || extension == "bmp" || extension == "tiff") {
+        fileType = "image";
+    } else if (extension == "avi" || extension == "mp4" || extension == "mov" || extension == "mkv" || extension == "flv") {
+        fileType = "video";
+    } else {
+        fileType = "unknown";
+    }
+}
+
 // Setup input parameters
 void setupInputParams(int argc, char** argv) {
     // Parse command-line arguments
@@ -76,8 +92,11 @@ void setupInputParams(int argc, char** argv) {
         inputFilePath = argv[1];
     }
     if (argc >= 3) {
-        inputFileType = argv[2];
+        outputFilePath = argv[2];
     }
+
+    // Detect inputFileType
+    detectFileType(inputFilePath, inputFileType);
 
     std::cout << "Input File Path: " << inputFilePath << std::endl;
     std::cout << "Input File Type: " << inputFileType << std::endl;
@@ -105,7 +124,10 @@ void setupFilters() {
 }
 
 // Render source image with filters
-void setupSourceImageWithFilters(std::shared_ptr<SourceImage> gpuSourceImage) {
+void setupSourceImageWithFilters() {
+    
+    target_view = std::make_shared<TargetView>();
+
     gpuSourceImage->RegLandmarkCallback([=](std::vector<float> landmarks) {
         lipstick_filter_->SetFaceLandmarks(landmarks);
         blusher_filter_->SetFaceLandmarks(landmarks);
@@ -118,6 +140,44 @@ void setupSourceImageWithFilters(std::shared_ptr<SourceImage> gpuSourceImage) {
                     ->addTarget(beauty_face_filter_)
                     ->addTarget(target_view);
     
+    
+    target_view->onSizeChanged(1280, 720);
+}
+
+// Initialize the window
+void initUIWindow() {
+    glfwInit();
+    window = GPUPixelContext::getInstance()->GetGLContext();
+  
+    if (window == NULL)
+    {
+        std::cout << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return;
+    }
+
+    // Set GLFW to use OpenGL if Vulkan is not available
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+
+    gladLoadGL();
+    glfwMakeContextCurrent(window);
+
+    glfwShowWindow(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+}
+
+// Function to detect video codec based on file extension
+int detectVideoCodec(const std::string& outputFileName) {
+    std::string extension = outputFileName.substr(outputFileName.find_last_of(".") + 1);
+    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+    if (extension == "mp4") {
+        return cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+    } else if (extension == "avi") {
+        return cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
+    } else {
+        return cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
+    }
 }
 
 // Perform video filters
@@ -137,79 +197,77 @@ void performVideoFilters() {
 
     // Initialize OpenCV video writer
     cv::VideoWriter writer;
-    int codec = cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
-    writer.open("output.avi", codec, fps, frameSize, true);
+    int codec = detectVideoCodec(outputFilePath);
+    writer.open(outputFilePath, codec, fps, frameSize, true);
 
     if (!writer.isOpened()) {
         std::cerr << "Could not open the output video file for write" << std::endl;
         return;
     }
 
+    // UI window
+    initUIWindow();
+
     cv::Mat frame;
     int currentFrame = 0;
-    while (cap.read(frame)) {
+    while (cap.read(frame) && !glfwWindowShouldClose(window)) {
         currentFrame++;
 
         // Print progress
-        std::cout << "Processing frame " << currentFrame << " / " << totalFrames << " (" 
-                  << (currentFrame * 100 / totalFrames) << "%)" << std::endl;
+        std::cout << "\rProcessing frame " << currentFrame << " / " << totalFrames << " (" 
+          << (currentFrame * 100 / totalFrames) << "%)" << std::flush;
 
         // Convert cv::Mat to the format required by your filters
         int width = frame.cols;
         int height = frame.rows;
         int channel_count = frame.channels();
-        const unsigned char* pixels = frame.data;
+        // const unsigned char* pixels = frame.data;
 
+        // If the result is still bluish, you might need to convert the color format
+        cv::Mat correctedFrame;
+        cv::cvtColor(frame, correctedFrame, cv::COLOR_BGR2RGB);
+        const unsigned char* pixels = correctedFrame.data;
+
+        // Convert Frame to SourceImage
         gpuSourceImage = SourceImage::create_from_memory(width, height, channel_count, pixels);
-        target_view = std::make_shared<TargetView>();
-
-        setupSourceImageWithFilters(gpuSourceImage);
-
-        target_view->onSizeChanged(frame.cols, frame.rows);
+        setupSourceImageWithFilters();
 
         // Render the frame
         gpuSourceImage->Render();
 
-        // Convert the processed frame back to cv::Mat
-        cv::Mat processedFrame(height, width, CV_8UC(channel_count), gpuSourceImage->getPixels());
+        // Convert the processed frame back to cv::Mat'
+        // Note: the processed pixels is 4-channels RGBA format
+        cv::Mat processedFrame(height, width, CV_8UC(4), gpuSourceImage->getPixels());
+        cv::Mat rgbFrame;
+        cv::cvtColor(processedFrame, rgbFrame, cv::COLOR_RGBA2BGR);
 
         // Write the processed frame to the output video
-        writer.write(processedFrame);
+        writer.write(rgbFrame);
+
+        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
+        // -------------------------------------------------------------------------------
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
+
+    std::cout << "\nProcessing completed." << std::endl;
 
     // Release OpenCV resources
     cap.release();
     writer.release();
+
+    // glfw: terminate, clearing all previously allocated GLFW resources.
+    // ------------------------------------------------------------------
+    glfwTerminate();
 }
 
 // Perform image filters
 void performImageFilters() {
-    
-    glfwInit();
-    GLFWwindow* window = GPUPixelContext::getInstance()->GetGLContext();
-  
-    if (window == NULL)
-    {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return;
-    }
-
-    gladLoadGL();
-    glfwMakeContextCurrent(window);
-
-    glfwShowWindow(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
         
     //  filter pipline
     // ----
     gpuSourceImage = SourceImage::create(inputFilePath);
-    target_view = std::make_shared<TargetView>();
-
-    setupSourceImageWithFilters(gpuSourceImage);
-                    
-    // set target view size
-    target_view->onSizeChanged(1280, 720);
+    setupSourceImageWithFilters();
     
     // render loop
     // -----------
@@ -235,12 +293,16 @@ void performImageFilters() {
 }
 
 // ======================= Main function =========================
-int main(int argc, char** argv) {
+int main(int argc, char** argv) {    
+
     // Setup input parameters
     setupInputParams(argc, argv);
     
     // Apply the default configuration values
     setupFilters();
+
+    // Init GLFW
+    initUIWindow();
 
     // Check inputFileType
     if (inputFileType == "video") {
