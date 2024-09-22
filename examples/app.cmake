@@ -42,6 +42,7 @@ INCLUDE_DIRECTORIES(
 	${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/glfw/include
 	${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/stb
 	${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/glad/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/inih  # Add ini.h include directory
 )
  
 # Add common source file
@@ -64,6 +65,10 @@ ELSEIF(${CURRENT_OS} STREQUAL "linux")
 	# FILE(GLOB GLAD_SOURCE_FILE  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad/src/*.c" )
 	# list(APPEND SOURCE_FILES ${GLAD_SOURCE_FILE})
 ENDIF()
+
+# Add ini.c source file
+FILE(GLOB INI_SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/inih/ini.c")
+list(APPEND SOURCE_FILES ${INI_SOURCE_FILE})
 
 # build type: executable
 # ------
@@ -102,6 +107,7 @@ FILE(GLOB RESOURCE_FILES
 	"${CMAKE_CURRENT_SOURCE_DIR}/../src/resources/*"        
 )
 list(APPEND RESOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../examples/desktop/demo.png")
+list(APPEND RESOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../examples/desktop/appConfig.ini")
 list(APPEND RESOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/vnn/models/vnn_face278_data/face_pc[1.0.0].vnnmodel")
 
 MACRO(EXPORT_INCLUDE)
