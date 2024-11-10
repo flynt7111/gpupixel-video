@@ -1,4 +1,4 @@
-*IMPORTANT*: I am pretty new to C++, so this fork just a praticing C++ work
+*IMPORTANT*: I am pretty new to C++, so this fork just a praticing C++ work. and it is NOT WORKING yet
 
 # For full README and Credits please check the original author links:
 Repository: [https://github.com/pixpark/gpupixel]
